@@ -1,0 +1,93 @@
+#!/bin/bash
+
+set -e
+
+PASSWORD="Core@150"
+
+SERVERS=(
+  # Shared Servers
+  95.216.190.152   # shared-16
+  157.180.28.165   # shared-15
+  91.99.215.33     # shared-14
+  157.90.253.208   # shared-13
+  77.42.74.224     # shared-12
+  65.109.142.74    # shared-11
+  91.99.136.110    # shared-10
+  46.62.226.13     # shared-9
+  91.99.28.39      # shared-8
+  46.62.252.158    # shared-7
+  91.98.87.110     # shared-6
+  91.99.219.176    # shared-5
+  91.98.232.72     # shared-4
+
+  # Dedicated Servers
+  5.78.78.98       # Dedicated-6
+  178.156.174.132  # Dedicated-4-MB
+  5.78.108.42      # NextDedicated-3
+  5.78.143.148     # Testing-Server
+  5.161.50.117     # Disposition
+  5.78.158.229     # Dedicated-1
+)
+
+for SERVER in "${SERVERS[@]}"; do
+  echo "🚀 Deploying to $SERVER"
+
+  # Step 1: Copy to /tmp on remote server
+  sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no \
+    ./metrics_client root@$SERVER:/tmp/metrics_client
+
+  # Step 2: SSH and move to /root, setup systemd
+  sshpass -p "$PASSWORD" ssh \
+    -o StrictHostKeyChecking=no \
+    -o BatchMode=no \
+    -o ConnectTimeout=10 \
+    root@$SERVER <<'EOF'
+set -e
+
+echo "→ Checking systemd"
+if ! command -v systemctl >/dev/null 2>&1; then
+  echo "❌ systemd not available on this server"
+  exit 1
+fi
+
+# Move binary to /root safely and make executable
+echo "→ Moving metrics_client to /root"
+mv /tmp/metrics_client /root/metrics_client
+chmod +x /root/metrics_client
+
+# Write systemd service file
+echo "→ Writing service file"
+cat > /etc/systemd/system/metrics_client.service << 'SERVICE'
+[Unit]
+Description=Go Metrics Client
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/root/metrics_client
+Restart=always
+RestartSec=5
+User=root
+WorkingDirectory=/root
+SyslogIdentifier=metrics_client
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+# Reload systemd to pick up new service
+echo "→ Reloading systemd"
+systemctl daemon-reload
+
+# Enable and start service
+echo "→ Enabling service"
+systemctl enable metrics_client.service
+
+echo "→ Starting service"
+systemctl restart metrics_client.service
+
+echo "✅ Service installed and running"
+EOF
+
+  echo "---------------------------"
+done

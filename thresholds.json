@@ -1,0 +1,9 @@
+{
+  "thresholds": {
+    "pjmachine": {
+      "cpu": 40,
+      "memory": 85,
+      "disk": 90
+    }
+  }
+}
